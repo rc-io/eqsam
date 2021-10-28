@@ -66,3 +66,4 @@ The best agreement is found for the Caribbean, NE America, European and Asian st
  <br/>
  
 - B Koo, S Metzger, P Vennam, C Emery, G Wilson, G Yarwood, "Comparing the ISORROPIA and EQSAM Aerosol Thermodynamic Options in CAMx", International Technical Meeting on Air Pollution Modelling and its Application,  ITM 2018: Air Pollution Modeling and its Application XXVI pp 93-98, 2020 [https://link.springer.com/chapter/10.1007/978-3-030-22055-6_16](https://link.springer.com/chapter/10.1007/978-3-030-22055-6_16).
+
