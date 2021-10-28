@@ -7,7 +7,7 @@ SUBROUTINE EQSAM4clim(xTT,xAW,xsPM,xaPM,xPMS,xPMT,xRHO,xVOL,xPH,xHp,xGF,xWH2O,&
 !____________________________________________________________________________________________
 ! WRITTEN BY SWEN METZGER (s.metzger@cyi.ac.cy), 2012-2014
 !          The Cyprus Institute, www.cyi.ac.cy
-!               *** COPYRIGHT 2012-2018+ ***
+!               *** COPYRIGHT 2012-2021 ***
 !
 ! Contact, w.r.t. EQSAM4clim modeling:
 ! Swen Metzger <swen.metzger@eco-serve.de>
