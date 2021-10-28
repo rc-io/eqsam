@@ -6,11 +6,32 @@
 	objectVersion = 55;
 	objects = {
 
+/* Begin PBXFileReference section */
+		840D3613272B44ED00F0BFF6 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		840D3614272B450A00F0BFF6 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		840D3615272B453000F0BFF6 /* eqsam_v03 */ = {isa = PBXFileReference; explicitFileType = sourcecode.fortran.f90; path = eqsam_v03; sourceTree = "<group>"; };
+		840D3617272B45F000F0BFF6 /* eqsam4clim_v11 */ = {isa = PBXFileReference; explicitFileType = sourcecode.fortran.f90; path = eqsam4clim_v11; sourceTree = "<group>"; };
+		840D3618272B460900F0BFF6 /* eqsam4clim_v10 */ = {isa = PBXFileReference; explicitFileType = sourcecode.fortran.f90; path = eqsam4clim_v10; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
 /* Begin PBXGroup section */
 		840D3608272B44D300F0BFF6 = {
 			isa = PBXGroup;
 			children = (
+				840D3614272B450A00F0BFF6 /* LICENSE */,
+				840D3613272B44ED00F0BFF6 /* README.md */,
+				840D3616272B453400F0BFF6 /* eqsam-versions */,
 			);
+			sourceTree = "<group>";
+		};
+		840D3616272B453400F0BFF6 /* eqsam-versions */ = {
+			isa = PBXGroup;
+			children = (
+				840D3615272B453000F0BFF6 /* eqsam_v03 */,
+				840D3618272B460900F0BFF6 /* eqsam4clim_v10 */,
+				840D3617272B45F000F0BFF6 /* eqsam4clim_v11 */,
+			);
+			path = "eqsam-versions";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

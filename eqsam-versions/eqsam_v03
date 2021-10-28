@@ -1,0 +1,695 @@
+31	!      Written by Swen Metzger 3/11/99. Modified 2002, 2003.
+32	!
+33	!      Department of Atmospheric Chemistry, Max-Planck-Institute for Chemistry.
+34	!      email: metzger@mpch-mainz.mpg.de
+35	!      http://www.mpch-mainz.mpg.de/~metzger
+36	!
+37	!      COPYRIGHT 1999-2003
+38	!
+39	!      purpose
+40	!      -------
+41	!      EQSAM (EQuilibrium Simplified Aerosol Model) is a new and computationally efficient thermodynamic
+42	!      aerosol composition model that allows to calculate the gas/aerosol equilibrium partitioning,
+43	!      including aerosol water, sufficiently fast and accurate for global (or even regional) modeling.
+44	!      EQSAM is based on a number of parameterizations, including single solute molalities and activity
+45	!      coefficients (AC). The thermodynamic framework (domains and subdomains, internally mixed aerosols)
+46	!      is the same as of more sophisticated thermodynamic equilibrium models (EQMs), e.g. of ISORROPIA
+47	!      (Nenes et al., 1998). Details are given in the references below (and the references therein).
+48	!
+49	!      The main assumption on which EQSAM/EQMs are based is thermodynamical and chemical equilibrium.
+50	!      From this assumption it directly follows that the aerosol water activity (aw) equals the ambient
+51	!      relative humidity (RH), if the water vapor pressure is sufficiently larger than the partial vapor
+52	!      pressure of the aerosol compounds. This is approximately true for tropospheric aerosols. Given the
+53	!      large amount of water vapor present, water vapor and aerosol water equilibrate relatively faster
+54	!      compared to all other aerosol compounds. This is subsequently also true for single aerosol compounds.
+55	!      The water activity of single solutes must also equal RH under this assumption. Therefore, the so
+56	!      called ZSR-relation is (and can be) used to calculate the aerosol associated water mass (simply
+57	!      from the sum of all water mass fractions that are derived from measured single solute molalities).
+58	!
+59	!      In contrast to other EQMs, EQSAM utilizes the fact that the RH fixes the water activity
+60	!      (under the above assumptions) and the consequence that any changes in RH also causes changes in
+61	!      the aerosol water mass and, hence, aerosol activity (including activity coefficients). Thus, an decrease
+62	!      (increase) in RH decrease (increases) the aerosol water mass (and water activity). This can change the
+63	!      aerosol composition, e.g. due to condensation (evaporation/crystallization), because the vapor pressure
+64	!      above the aerosol reduces (increases). In turn, a vapor pressure reduction (increase) due to changes
+65	!      in the aerosol composition is compensated by an associated condensation (evaporation) of water vapor
+66	!      to maintain the aerosol molality to remain constant (because aw=RH). Furthermore, the aerosol water
+67	!      mainly depends on the aerosol mass and the type of solute, so that parameterizations of single solute
+68	!      molalities and activity coefficients can be defined, only depending on the type of solute and RH.
+69	!      The advantage of using such parameterizations is that the entire aerosol equilibrium composition
+70	!      can be solved analytically, i.e. non-iteratively, which considerably reduces the amount of CPU time
+71	!      that is usually need for aerosol thermodynamic calculations (especially if an EQM is incorporated in
+72	!      an aerosol dynamical model that is in turn embedded in a high resolution regional or global model).
+73	!
+74	!      However, EQSAM should still be regarded as a starting point for further developments. There is still
+75	!      room for improvements. For instance, this code is not yet numerically optimized (vectorized) and a
+76	!      number of improvements with respect to an explicit treatment of additional equilibrium reactions,
+77	!      missing (or only implicit) dissociation, and a basic parameterization of the water uptake.
+78	!
+79	!      Note that EQSAM was originally developed to calculate the gas/aerosol equilibrium partitioning of the
+80	!      ammonium-sulfate-nitrate-water system for climate models, excluding solid compounds.
+81	!      This version (eqsam_v03d.f90) is extended with respect to sea salt. Solids/hysteresis are treated in a
+82	!      simplified manner. Results of a box model comparison with ISORROPIA will be available from the web page.
+83	!      Please also note that the water uptake is based on additional (unpublished) parameterizations for single
+84	!      solute molalities, which are derived from tabulated measurements used in ISORROPIA. Note further that
+85	!      this extended version (eqsam_v03d.f90) is not yet published. A publication is in progress.
+86	!
+87	! ToDo:
+88	!     Split ion-pairs into ions for water parameterizations (since info is actually available)
+89	!     Include uptake/dissociation of NH3, HNO3, HCl (mainly to get pH right at near neutral conditions)
+90	!     Extension to K+,Ca++,Mg++, CO2/(CO3)2--/HCO3-,SOA,etc.. (maybe not)
+91	!     Vectorization. Translation of hardcoded formulas in array syntax.
+92	!     I/O Interface and program structure clean up.
+93	!     EQSAM info webpage.
+94	!
+95	! Version History:
+96	!
+97	!  eqsam_v03d.f90 (MPI-CH, June 2003):
+98	!   - gama parameterizations now according to Metzger 2002 (JGR Appendix)
+99	!   - improved pH calculations (still restricted to strong acids)
+100	!   - removed bug that lead to too high nitrate formation at dry and cold regions (UT/LS)
+101	!   - removed bug in solid/hysteresis calculations
+102	!     (both bugs introduced in eqsam_v03b.f90 by cleaning up eqsam_v02a.f90)
+103	!
+104	!  eqsam_v03c.f90 (MPI-CH, April 2003):
+105	!   - more accurate paramterizations of single solute molalities (Na, Cl species)
+106	!   - cleanded up RHD subdomain structure
+107	!   - improved water uptake (Na, Cl species)
+108	!
+109	!  eqsam_v03b.f90 (MPI-CH, March 2003):
+110	!                 System extended to HCl,Cl-/Na+.
+111	!                 Parameterization (fit) of additional HNO3 uptake removed.
+112	!                 Instead, complete analytical solution of equilibrium reactions, based on the AC-RH relationship.
+113	!  eqsam_v03.f90  (IMAU, October 1999):
+114	!                 Test version (included in TM3).
+115	!  eqsam_v02a.f90 (IMAU, April 2000):
+116	!                 Box model version.
+117	!  eqsam_v02.f90  (IMAU, October 1999):
+118	!                 TM3 version.
+119	!                 Version including solids and additional HNO3 uptake on acidic aerosols (parameterized).
+120	!  eqsam_v01b.f90 (MPI-CH, January 2003):
+121	!                 Same as eqsam_v01a.f90 (additional lines though uncommented for test purposes only).
+122	!  eqsam_v01a.f90 (IMAU, April 2000):
+123	!                 Box model version.
+124	!  eqsam_v01.f90  (IMAU, October 1999):
+125	!                 TM3 version.
+126	!                 First and most basic version (without solids) for better vectorization (for global modeling).
+127	!                 System: NH3,NH4+/H2SO4+,HSO4-,SO4--/HNO3,NO3-, H2O
+128	!                 based on equilibrium / internal mixture assumption / aw=rh / ZSR-relation
+129	!                 parameterization of activcity coefficients (AC), i.e. an AC-RH relationship
+130	!
+131	!
+132	!      interface
+133	!      ---------
+134	!      call  eqsam_v03d(yi,yo,nca,nco,iopt,loop,imax,ipunit,in)
+135	!
+136	!      yi = input  array (imax, nca)
+137	!      yo = output array (imax, nco)
+138	!      imax = max loop (e.g. time steps)
+139	!      nca >= 11
+140	!      nc0 >= 35
+141	!      iopt = 1 metastable
+142	!      iopt = 2 solids
+143	!      iopt = 3 hysteresis (metastable/solids) for online calculations
+144	!      iopt = 31 hysteresis lower branch
+145	!      iopt = 32 hysteresis upper branch
+146	!      ipunit = I/O unit (can be skipped)
+147	!      in = array        (can be skipped)
+148	!
+149	!      method
+150	!      ------
+151	!      equilibrium / internal mixture assumption / aw=rh
+152	!      System: NH3,NH4+/H2SO4+,HSO4-,SO4--/HNO3,NO3-, HCl,Cl-/Na+, H2O
+153	!              (K+,Ca++,Mg++)
+154	!      external
+155	!      --------
+156	!      program    eqmd.f90    (driver only needed for the box model version)
+157	!      subroutine gribio.f90  (provides diagnostics output in grib/binary/ascii format)
+158	!
+159	!      references
+160	!      ---------
+161	!      Swen Metzger Ph.D Thesis, University Utrecht, 2000.
+162	!         http://www.library.uu.nl/digiarchief/dip/diss/1930853/inhoud.htm
+163	!
+164	!      Metzger, S. M., F. J. Dentener, J. Lelieveld, and S. N. Pandis,
+165	!         GAS/AEROSOL PARTITIONING I: A COMPUTATIONALLY EFFICIENT MODEL,
+166	!         J Geophys. Res., 107, D16, 10.1029/2001JD001102, 2002
+167	!         http://www.agu.org/journals/jd/jd0216/2001JD001102/index.html
+168	!      Metzger, S. M., F. J. Dentener, A. Jeuken, and M. Krol, J. Lelieveld,
+169	!         GAS/AEROSOL PARTITIONING II: GLOBAL MODELING RESULTS,
+170	!         J Geophys. Res., 107, D16, 10.1029/2001JD001103, 2002.
+171	!         http://www.agu.org/journals/jd/jd0216/2001JD001103/index.html
+172	!___________________________________________________________________________________________________________________________________
+173	real,parameter                                :: RH_HIST_DW=1.50                                    ! mean value for mixture of wet (2) and dry (1) gridboxes (needed for HYSTERESIS)
+174	real,parameter                                :: T0=298.15,T1=298.0,AVO=6.03e23,R=82.0567e-6,     & ! in cu.m*atm/deg/mole
+175	                                                 r_kcal  = 1.986E-3                                 ! Ideal gas constant [kcal K-1.mole-1]
+176	real,parameter                                :: RHMAX=0.99,RHMIN=0.0001                            ! restrict to max / min RH
+177	real,parameter                                :: MWNH4=18.,MWSO4=96.,MWNO3=62.,MWCl=35.5            ! mole mass of species considered
+178	real,parameter                                :: MWNa=23.0,MWCa=40.1,MWN=14.0, MWS=32.1
+179	real,parameter                                :: MWH20=55.51*18.01,ZERO=0.0
+180	real,parameter                                :: GF1=0.25,GF2=0.50,GF3=0.40,GF4=1.00,K=2.           ! exponents of AC-RH functions
+181	!______________________________________________
+182	integer,parameter                             :: NPAIR=10
+183	!
+184	integer                                       :: ii,il,IHYST
+185	integer,intent(in)                            :: nca,nco,imax,loop,ipunit
+186	integer,intent(inout)                         :: iopt
+187	!______________________________________________
+188	!integer,dimension(6),intent(in)               :: in
+189	!______________________________________________
+190	real                                          :: T0T,TT,RH,PX,RHD,KAN,KAC,ZIONIC,RH_HIST,GAMA,GG,GF,GFN
+191	real                                          :: X00,X01,X02,X03,X04,X05,X08,X09,X10,X11
+192	real                                          :: X0,X1,X2,X3,X4,X5,X6,XK10,XK6
+193	real                                          :: ZFLAG,ZKAN,ZKAC,PH,COEF,HPLUS,AKW,XKW,MOLAL
+194	real                                          :: TNH4,TSO4,TNO3,TNa,TCl,TPo,TCa,TMg
+195	real                                          :: PNH4,PSO4,PNO3,PCl,PNa,GNO3,GNH3,GSO4,GHCl
+196	real                                          :: ASO4,ANO3,ANH4,ACl,ANa,SNH4,SSO4,SNO3,SCl,SNa
+197	real                                          :: WH2O,PM,PMs,PMt,RINC,DON,RATIONS,GR,NO3P,NH4P
+198	!_______________________________________________
+199	real,dimension(imax,nca),intent(in)           :: yi
+200	real,dimension(imax,nco),intent(out)          :: yo
+201	real,dimension(8)                             :: w1,w2
+202	real,dimension(8)                             :: RHDA,RHDE,RHDX,RHDZ    ! RHD / MRHD arrays for different aerosol types
+203	real,dimension(NPAIR)                         :: M0,MW,NW,ZW            ! arrays of ion pairs
+204	!
+205	! salt solutes:
+206	!   1 = NACl,  2 = (NA)2SO4, 3 = NANO3,  4 = (NH4)2SO4,  5 = NH4NO3, 6 = NH4CL,   7 = 2H-SO4
+207	!   8 = NH4HSO4,   9 = NAHSO4, 10 = (NH4)3H(SO4)2
+208	!
+209	DATA MW(1:NPAIR)/ 58.5, 142.0, 88.0, 132.0, 80.0, 53.5, 98.0, 115.0, 120.0, 247.0/ ! mole mass of the salt solute
+210	DATA NW(1:NPAIR)/  2.0,   2.5,  2.5,   2.5,  3.5,  1.0,  4.5,   2.0,   2.0,   2.5/ ! square of max. dissocation number (not consistent)
+211	DATA ZW(1:NPAIR)/ 0.67,   1.0,  1.0,   1.0,  1.0,  1.0,  0.5,   1.0,   1.0,   1.0/ ! exponents of water activity functions
+212	!
+213	DATA RHDA(1:8)/0.32840, 0.4906, 0.6183, 0.7997, 0.67500, 0.5000, 0.4000, 0.0000/ ! RHD / MRHD values as of ISORROPIA / SCAPE (T=298.15K)
+214	DATA RHDE(1:8)/-1860.0, -431.0, 852.00, 80.000, 262.000, 3951.0, 384.00, 0.0000/ ! Temp. coeff.
+215	!___________________________________________________________________________________________________________________________________
+216	IHYST=2
+217	IF(IOPT.EQ.31) THEN      ! SOLID HYSTORY
+218	   IHYST=1
+219	   IOPT=3
+220	ELSEIF(IOPT.EQ.32) THEN  ! WET   HISTORY
+221	   IHYST=2
+222	   IOPT=3
+223	ENDIF
+224	!-------------------------------------------------------------------------------
+225	!DLW:010406: Commented out print block.
+226	!-------------------------------------------------------------------------------
+227	!write(ipunit,*)'eqsam_v03d ...'
+228	!print*,'                                                          '
+229	!print*,'              EQuilibrium Simplified Aerosol Model (EQSAM)'
+230	!print*,'                        for global modeling               '
+231	!print*,'                                 by                       '
+232	!print*,'                         Swen Metzger, MPI-CH             '
+233	!print*,'                         Copyright 1999-2003              '
+234	!print*,'                    >> metzger@mpch-mainz.mpg.de <<       '
+235	!print*,'                     last change:  04. June, 2003         '
+236	!print*,'                           (version 3.0d)                 '
+237	!print*,'                   gas/aerosol calculations assuming      '
+238	!print*,'                  System: NH3,NH4+/H2SO4+,HSO4-,SO4--     '
+239	!print*,'                      HNO3,NO3-, HCl,Cl-/Na+, H2O         '
+240	!if(iopt.eq.1) then
+241	!print*,'                         metastable aeorsols              '
+242	!elseif(iopt.eq.2) then
+243	!print*,'                            solid aeorsols                '
+244	!elseif(iopt.eq.3) then
+245	!print*,'                             hysteresis                   '
+246	!print*,'                         (metastable/solids)              '
+247	!if(IHYST.eq.1) then
+248	!print*,'                            solid hystory                 '
+249	!elseif(IHYST.eq.2) then
+250	!print*,'                             wet hystory                  '
+251	!endif
+252	!endif
+253	!print*,'                                                          '
+254	!print*,'loop over ',loop,' data sets'
+255	!print*,'   '
+256	!-------------------------------------------------------------------------------
+257	!DLW:010406: End comment out print block.
+258	!-------------------------------------------------------------------------------
+259	!___________________________________________________________________________________________________________________________________
+260	yo=0.;w1=0.;w2=0.                                                                                   ! init/reset
+261	!___________________________________________________________________________________________________________________________________
+262	do il=1,loop
+263
+264	! get old relative humidity to calculate aerosol hysteresis (online only)
+265
+266	   RH_HIST = 2.                                                                                     ! WET HISTORY (DEFAULT)
+267	   IF(IHYST.EQ.1.OR.IOPT.EQ.2)  RH_HIST = 1.                                                        ! SET TO SOLIDS
+268
+269	!  meteorology
+270	   TT = yi(il,1)                    ! T                      [K]
+271	   RH = yi(il,2)                    ! RH                     [0-1]
+272	   PX = yi(il,11)                   ! p                      [hPa]
+273	!
+274	! gas+aerosol:
+275	   w1(1) = yi(il,6)                 ! Na+ (ss  + xsod) (a)   [umol/m^3 air]
+276	   w1(2) = yi(il,4)                 ! H2SO4    + SO4-- (p)   [umol/m^3 air]
+277	   w1(3) = yi(il,3)                 ! NH3  (g) + NH4+  (p)   [umol/m^3 air]
+278	   w1(4) = yi(il,5)                 ! HNO3 (g) + NO3-  (p)   [umol/m^3 air]
+279	   w1(5) = yi(il,7)                 ! HCl  (g) + Cl-   (p)   [umol/m^3 air]
+280	   w1(6) = yi(il, 8)                ! K+   (p) from Dust     [umol/m^3 air]
+281	   w1(7) = yi(il, 9)                ! Ca++ (p) from Dust     [umol/m^3 air]
+282	   w1(8) = yi(il,10)                ! Mg++ (p) from Dust     [umol/m^3 air]
+283	!______________________________________________
+284
+285	   zflag=1.
+286
+287	   w1=w1*1.0e-6                     ! [mol/m^3 air]
+288
+289	   TNa   = w1(1)                    ! total input sodium   (g+p)
+290	   TSO4  = w1(2)                    ! total input sulfate  (g+p)
+291	   TNH4  = w1(3)                    ! total input ammonium (g+p)
+292	   TNO3  = w1(4)                    ! total input nitrate  (g+p)
+293	   TCl   = w1(5)                    ! total input chloride (g+p)
+294	   TPo   = w1(6)                    ! total input potasium (g+p)
+295	   TCa   = w1(7)                    ! total input calcium  (g+p)
+296	   TMg   = w1(8)                    ! total input magnesium(g+p)
+297
+298	! SULFATE RICH
+299
+300	      if((w1(1)+w1(3)+w1(6)+2.*(w1(7)+w1(8))).le.(2.*w1(2))) then
+301	          zflag=3.
+302	      endif
+303
+304	! SULFATE VERY RICH CASE if (NH4+Na+K+2(Ca+Mg))/SO4 < 1
+305
+306	      if((w1(1)+w1(3)+w1(6)+2.*(w1(7)+w1(8))).le.w1(2)) then
+307	          zflag=4.
+308	      endif
+309
+310	! SULFATE NEUTRAL CASE
+311
+312	      if((w1(1)+w1(3)+w1(6)+2.*(w1(7)+w1(8))).gt.(2.*w1(2))) then
+313	          zflag=2.
+314	      endif
+315
+316	! SULFATE POOR AND CATION POOR CASE
+317
+318	      if((w1(1)+w1(6)+2.*(w1(7)+w1(8))).gt.(2.*w1(2))) then
+319	          zflag=1.
+320	      endif
+321
+322	      IF ( RH .LT. RHMIN ) RH=RHMIN
+323	      IF ( RH .GT. RHMAX ) RH=RHMAX
+324
+325	! CALCULATE TEMPERATURE DEPENDENCY FOR SOME RHDs
+326
+327	      RHDX(:)=RHDA(:)*exp(RHDE(:)*(1./TT-1./T0))
+328	      RHDZ(:)=RHDX(:)
+329
+330	! ACCOUNT FOR VARIOUS AMMOMIUM/SODIUM SULFATE SALTS ACCORDING TO MEAN VALUE AS OF ISORROPIA
+331
+332	      GG=2.0                          ! (Na)2SO4 / (NH4)2SO4 IS THE PREFFERED SPECIES FOR SULFATE DEFICIENT CASES
+333	      IF(ZFLAG.EQ.3.) THEN
+334	         IF(RH.LE.RHDZ(7)) THEN       ! ACCOUNT FOR MIXTURE OF (NH4)2SO4(s) & NH4HSO4(s) & (NH4)3H(SO4)2(s)
+335	            GG=1.677                  !                        (Na)2SO4 &  NaHSO4
+336	!           GG=1.5
+337	         ELSEIF(RH.GT.RHDZ(7).AND.RH.LE.RHDZ(5)) THEN ! MAINLY (Na)2SO4 / (NH4)2SO4(s) & (NH4)3H(SO4)2(s)
+338	            GG=1.75
+339	!           GG=1.5
+340	         ELSEIF(RH.GE.RHDZ(5)) THEN   ! (NH4)2SO4(S) & NH4HSO4(S) & SO4-- & HSO4-
+341	            GG=1.5                    !  (Na)2SO4 &  NaHSO4
+342	         ENDIF
+343	      ENDIF
+344	      IF(ZFLAG.EQ.4.) GG=1.0          ! IF SO4 NEUTRALIZED, THEN ONLY AS NaHSO4 / NH4HSO4(S) OR  HSO4- / H2SO4
+345
+346	      RHD=RH
+347	      IF(IOPT.EQ.2.OR.RH_HIST.LT.RH_HIST_DW) THEN   ! GET RHD FOR SOLIDS / HYSTERESIS
+348	!
+349	! GET LOWEST DELIQUESCENCE RELATIVE HUMIDITIES ACCORDING TO THE CONCENTRATION DOMAIN (APROXIMATION)
+350	! BASED ON RHD / MRHD ISORROPIA/SCAPE
+351	!
+352	      w2(:)=1.
+353	      do ii=1,8
+354	         if(w1(ii).le.1.e-12) w2(ii)=0.  ! skip compound in RHD calculation if value is concentration is zero or rather small
+355	      enddo
+356
+357	! GET LOWEST RHD ACCORDING TO THE CONCENTRATION DOMAIN
+358
+359	! zflag=1. (cation rich)  ...
+360	! 1. sea salt      aerosol          : RHDX(1)=MgCl2
+361	! 2. mineral dust  aerosol          : RHDX(2)=Ca(NO3)2
+362	!
+363	! zflag=2. (sulfate neutral) ...
+364	! 3. ammonium + nitrate             : RHDX(3)= NH4NO3
+365	! 4. ammonium + sulfate             : RHDX(4)=(NH4)2SO4
+366	! 5. ammonium + sulfate mixed salt  : RHDX(5)=(NH4)3H(SO4)2, (NH4)2SO4
+367	! 6. ammonium + nitrate  + sulfate  : RHDX(6)=(NH4)2SO4, NH4NO3, NA2SO4, NH4CL
+368	!
+369	! zflag=3. (sulfate poor) ...
+370	! 7. ammonium + sulfate  (1:1,1.5)  : RHDX(7)= NH4HSO4
+371	!
+372	! zflag=4. (sulfate very poor) ...
+373	! 8. sulfuric acid                  : RHDX(8)= H2SO4
+374
+375	!WRITE(IPUNIT,*)'zflag = ', ZFLAG     !DLW
+376	!WRITE(IPUNIT,*)'GG    = ', GG        !DLW
+377	!WRITE(IPUNIT,*)'w1(1:8) = ', W1(1:8) !DLW
+378	!WRITE(IPUNIT,*)'w2(1:8) = ', W2(1:8) !DLW
+379
+380	   IF(ZFLAG.EQ.1.)THEN
+381
+382	      RHD=W2(1)+W2(5)                     ! Na+  dependency
+383	      IF(RHD.EQ.0.)  RHDX(1)=1.
+384	      RHD=W2(6)+W2(7)+W2(8)               ! K+/Ca++/Mg++ dependency (incl. ss)
+385	      IF(RHD.EQ.0.)  RHDX(2)=1.
+386
+387	      RHD=MINVAL(RHDX(1:2))
+388
+389	   ELSEIF(ZFLAG.EQ.2.)THEN
+390
+391	      RHD=W2(3)*W2(4)                     ! NH4+ & NO3-  dependency
+392	      IF(RHD.EQ.0.)  RHDX(3)=1.
+393	      RHD=W2(2)+W2(3)                     ! NH4+ & SO4-- dependency
+394	      IF(GG.NE.2.)   RHD=0.               ! account only for pure (NH4)2SO4
+395	      IF(RHD.EQ.0.)  RHDX(4)=1.
+396	      RHD=W2(2)+W2(3)                     ! NH4+ & SO4-- dependency
+397	      IF(RHD.EQ.0.)  RHDX(5)=1.
+398	      RHD=W2(2)+W2(3)+W2(4)+W2(5)         ! (NH4)2SO4, NH4NO3, NA2SO4, NH4CL dependency
+399	      IF(RHD.EQ.0.)  RHDX(6)=1.
+400
+401	!     RHD=MINVAL(RHDX(3:4))
+402	      RHD=MINVAL(RHDX(3:6))
+403
+404	   ELSEIF(ZFLAG.EQ.3.)THEN
+405
+406	      RHD=W2(2)+W2(3)                     ! NH4+ & SO4-- dependency
+407	      IF(RHD.EQ.0.)  RHDX(7)=1.
+408	      RHD=RHDX(7)
+409
+410	   ELSEIF(ZFLAG.EQ.4.)THEN
+411
+412	      RHD=W2(2)                           ! H2SO4 dependency (assume no dry aerosol)
+413	      IF(RHD.EQ.0.)  RHDX(8)=1.
+414
+415	      RHD=RHDX(8)
+416
+417	   ENDIF ! ZFLAG
+418	   ! WRITE(IPUNIT,*)'RHDX(1:8) = ', RHDX(1:8)   !DLW
+419	   ENDIF ! SOLIDS
+420
+421	! GET WATER ACTIVITIES ACCORDING TO METZGER, 2000.
+422	! FUNCTION DERIVED FROM ZSR RELATIONSHIP DATA (AS USED IN ISORROPIA)
+423
+424	      M0(:) = ((NW(:)*MWH20/MW(:)*(1./RH-1.)))**ZW(:)
+425
+426	! CALCULATE TEMPERATURE DEPENDENT EQUILIBRIUM CONSTANTS
+427
+428	      T0T=T0/TT
+429	      COEF=1.0+LOG(T0T)-T0T
+430
+431	! EQUILIBRIUM CONSTANT NH4NO3(s) <==> NH3(g) + HNO3(g) [atm^2] (ISORROPIA)
+432
+433	      XK10 = 5.746e-17
+434	      XK10= XK10 * EXP(-74.38*(T0T-1.0) + 6.120*COEF)
+435	      KAN = XK10/(R*TT)/(R*TT)
+436
+437	! EQUILIBRIUM CONSTANT  NH4CL(s) <==> NH3(g) + HCL(g) [atm^2] (ISORROPIA)
+438
+439	      XK6  = 1.086e-16
+440	      XK6 = XK6 * EXP(-71.00*(T0T-1.0) + 2.400*COEF)
+441	      KAC = XK6/(R*TT)/(R*TT)
+442
+443	!
+444	! CALCULATE AUTODISSOCIATION CONSTANT (KW) FOR WATER H2O <==> H(aq) + OH(aq) [mol^2/kg^2] (ISORROPIA)
+445
+446	      XKW  = 1.010e-14
+447	      XKW = XKW *EXP(-22.52*(T0T-1.0) + 26.920*COEF)
+448
+449	! GET MEAN MOLAL IONIC ACTIVITY COEFF ACCORDING TO METZGER, 2002.
+450
+451	      GAMA=0.0
+452	      IF(RH.GE.RHD)                GAMA=(RH**ZFLAG/(1000./ZFLAG*(1.-RH)+ZFLAG))
+453	      GAMA = GAMA**GF1            ! ONLY GAMA TYPE OF NH4NO3, NaCl, etc. NEEDED SO FAR
+454
+455	      GAMA=0.0
+456	      GFN=K*K                      ! K=2, i.e. condensation of 2 water molecules per 1 mole ion pair
+457	      GF=GFN*GF1                   ! = GFN[=Nw=4] * GF1[=(1*1^1+1*1^1)/2/Nw=1/4] = 1
+458	                                   ! ONLY GAMA TYPE OF NH4NO3, NH4Cl, etc. needed so far
+459
+460	      IF(RH.GE.RHD) GAMA=RH**GF/((GFN*MWH20*(1./RH-1.)))**GF1
+461
+462	      GAMA = min(GAMA,1.0)        ! FOCUS ON 0-1 SCALE
+463	      GAMA = max(GAMA,0.0)
+464	      GAMA = (1.-GAMA)**K          ! transplate into aqueous phase equillibrium and account for
+465	                                   ! enhanced uptake of aerosol precursor gases with increasing RH
+466	                                   ! (to match the results of ISORROPIA)
+467
+468	! CALCULATE RHD DEPENDENT EQ: IF RH <  RHD => NH4NO3(s) <==> NH3 (g) + HNO3(g) (ISORROPIA)
+469	!                             IF RH >> RHD => HNO3  (g)   -> NO3 (aq)
+470
+471	      X00  = MAX(ZERO,MIN(TNa,GG*TSO4))       ! MAX SODIUM   SULFATE
+472	      X0   = MAX(ZERO,MIN(TNH4,GG*TSO4-X00))  ! MAX AMMOMIUM SULFATE
+473	      X01  = MAX(ZERO,MIN(TNa-X00, TNO3))     ! MAX SODIUM   NITRATE
+474	      X1   = MAX(ZERO,MIN(TNH4-X0,TNO3-X01))  ! MAX AMMOMIUM NITRATE
+475	!
+476	      X02  = MAX(ZERO,MIN(TNa-X01-X00,TCl))   ! MAX SODIUM   CHLORIDE
+477	      X03  = MAX(ZERO,MIN(TNH4-X0-X1,TCl-X02))! MAX AMMOMIUM CHLORIDE
+478
+479	      X2   = MAX(TNH4-X1-X0-X03,ZERO)         ! INTERIM RESIDUAL NH3
+480	      X3   = MAX(TNO3-X1-X01,ZERO)            ! INTERIM RESIDUAL HNO3
+481	      X04  = MAX(TSO4-(X0+X00)/GG,ZERO)       ! INTERIM RESIDUAL H2SO4
+482	      X05  = MAX(TCl-X03-X02,ZERO)            ! INTERIM RESIDUAL HCl
+483	!     X06  = MAX(TNa-X02-X01-X00,ZERO)        ! INTERIM RESIDUAL Na (should be zero for electro-neutrality in input data)
+484	!
+485	      ZKAN=2.
+486	      IF(RH.GE.RHD) ZKAN=ZKAN*GAMA
+487
+488	      X4   = X2 + X3
+489	      X5   = SQRT(X4*X4+KAN*ZKAN*ZKAN)
+490	      X6   = 0.5*(-X4+X5)
+491	      X6   = MIN(X1,X6)
+492
+493	      GHCl = X05                              ! INTERIM RESIDUAl HCl
+494	      GNH3 = X2 + X6                          ! INTERIM RESIDUAl NH3
+495	      GNO3 = X3 + X6                          ! RESIDUAl HNO3
+496	      GSO4 = X04                              ! RESIDUAl H2SO4
+497	      PNa  = X02 + X01 + X00                  ! RESIDUAl Na (neutralized)
+498
+499	      ZKAC=2.
+500	      IF(RH.GE.RHD) ZKAC=ZKAC*GAMA
+501
+502	      X08   = GNH3 + GHCl
+503	      X09   = SQRT(X08*X08+KAC*ZKAC*ZKAC)
+504	      X10   = 0.5*(-X08+X09)
+505	      X11   = MIN(X03,X10)
+506
+507	      GHCl = GHCl + X11                       ! RESIDUAL HCl
+508	      GNH3 = GNH3 + X11                       ! RESIDUAL NH3
+509
+510	! GO SAVE ...
+511
+512	      IF(GHCl.LT.0.)   GHCl=0.
+513	      IF(GSO4.LT.0.)   GSO4=0.
+514	      IF(GNH3.LT.0.)   GNH3=0.
+515	      IF(GNO3.LT.0.)   GNO3=0.
+516	      IF(PNa.LT.0.)    PNa=0.
+517	      IF(GSO4.GT.TSO4) GSO4=TSO4
+518	      IF(GNH3.GT.TNH4) GNH3=TNH4
+519	      IF(GNO3.GT.TNO3) GNO3=TNO3
+520	      IF(GHCl.GT.TCl)  GHCl=TCl
+521	      IF(PNa.GT.TNa)   PNa=TNa
+522	!     IF(PNa.LT.TNa)   print*,il,' PNa.LT.TNa => no electro-neutrality in input data! ',PNa,TNa
+523
+524
+525	! DEFINE AQUEOUSE PHASE (NO SOLID NH4NO3 IF NO3/SO4>1, TEN BRINK, ET AL., 1996, ATMOS ENV, 24, 4251-4261)
+526
+527	!     IF(TSO4.EQ.ZERO.AND.TNO3.GT.ZERO.OR.TNO3/TSO4.GE.1.) RHD=RH
+528
+529	!     IF(IOPT.EQ.2.AND.RH.LT.RHD.OR.IOPT.EQ.2.AND.RH_HIST.LT.RH_HIST_DW) THEN        ! SOLIDS / HYSTERESIS
+530	      IF(RH_HIST.EQ.1.AND.RH.LT.RHD) THEN        ! SOLIDS / HYSTERESIS
+531
+532	       ! EVERYTHING DRY, ONLY H2SO4 (GSO4) REMAINS IN THE AQUEOUSE PHASE
+533
+534	         ANH4 = 0.
+535	         ASO4 = 0.
+536	         ANO3 = 0.
+537	         ACl  = 0.
+538	         ANa  = 0.
+539
+540	      ELSE  !  SUPERSATURATED SOLUTIONS NO SOLID FORMATION
+541
+542	         ASO4 = TSO4 - GSO4
+543	         ANH4 = TNH4 - GNH3
+544	         ANO3 = TNO3 - GNO3
+545	         ACl  = TCl  - GHCl
+546	         ANa  = PNa
+547
+548	      ENDIF ! SOLIDS / HYSTERESIS
+549
+550	! CALCULATE AEROSOL WATER [kg/m^3(air)]
+551	!
+552	! salt solutes:
+553	!   1 = NACl,  2 = (NA)2SO4, 3 = NANO3,  4 = (NH4)2SO4,  5 = NH4NO3, 6 = NH4CL,   7 = 2H-SO4
+554	!   8 = NH4HSO4,   9 = NAHSO4, 10 = (NH4)3H(SO4)2
+555	!
+556	      IF(ZFLAG.EQ.1.) WH2O = ASO4/M0( 2) + ANO3/M0(3) + ACl/M0(6)
+557	      IF(ZFLAG.EQ.2.) WH2O = ASO4/M0( 9) + ANO3/M0(5) + ACl/M0(6)
+558	      IF(ZFLAG.EQ.3.) WH2O = ASO4/M0( 8) + ANO3/M0(5) + ACl/M0(6)
+559	      IF(ZFLAG.EQ.4.) WH2O = ASO4/M0( 8) + GSO4/M0(7)
+560
+561	! CALCULATE AQUEOUS PHASE PROPERTIES
+562
+563	!     PH    = 9999.
+564	      PH    = 7.
+565	      MOLAL = 0.
+566	      HPLUS = 0.
+567	      ZIONIC= 0.
+568
+569	      IF(WH2O.GT.0.) THEN
+570
+571	         ! CALCULATE AUTODISSOCIATION CONSTANT (KW) FOR WATER
+572
+573	         AKW=XKW*RH*WH2O*WH2O                         ! H2O <==> H+ + OH- with kw [mol^2/kg^2]
+574	         AKW=AKW**0.5                                 ! [OH-] = [H+] [mol]
+575	         AKW=MAX( AKW, 1.0E-30 )                      ! DLW, 11-14-06, to prevent division by 0 in HPLUS below.
+576
+577	         ! Calculate hydrogen molality [mol/kg], i.e. H+ of the ions:
+578	         !                                   Na+, NH4+, NO3-, Cl-, SO4--, HH-SO4- [mol/kg(water)]
+579	         !                                   with [OH-] = kw/[H+]
+580
+581	         HPLUS = (-ANa/WH2O-ANH4/WH2O+ANO3/WH2O+ACl/WH2O+GG*ASO4/WH2O+GG*GSO4/WH2O+ &
+582	            SQRT(( ANa/WH2O+ANH4/WH2O-ANO3/WH2O-ACl/WH2O-GG*ASO4/WH2O-GG*GSO4/WH2O)**2+XKW/AKW*WH2O))/2.
+583
+584	         ! Calculate pH
+585
+586	! PH is not used in modelE, so this line is commented out until the HPLUS calculation is rewritten for
+587	! robustness with respect to real*4 roundoff errors.  These errors might be associated with the inputs
+588	! to this subroutine, so no rewrite yet.
+589	!         PH=-ALOG10(HPLUS)                             ! aerosol pH
+590
+591	         ! Calculate ionic strength [mol/kg]
+592
+593	         ZIONIC=0.5*(ANa+ANH4+ANO3+ACl+ASO4*GG*GG+GSO4*GG*GG+XKW/AKW*WH2O*WH2O)
+594	         ZIONIC=ZIONIC/WH2O                                           ! ionic strength [mol/kg]
+595	!        ZIONIC=min(ZIONIC,200.0)                                     ! limit for output
+596	!        ZIONIC=max(ZIONIC,0.0)
+597
+598	      ENDIF ! AQUEOUS PHASE
+599	!
+600	!-------------------------------------------------------
+601	! calculate diagnostic output consistent with other EQMs ...
+602	!
+603	      ASO4 = ASO4 + GSO4                                     ! assuming H2SO4 remains aqueous
+604
+605	      TNa   = TNa  * 1.e6                                    ! total input sodium   (g+p)  [umol/m^3]
+606	      TSO4  = TSO4 * 1.e6                                    ! total input sulfate  (g+p)  [umol/m^3]
+607	      TNH4  = TNH4 * 1.e6                                    ! total input ammonium (g+p)  [umol/m^3]
+608	      TNO3  = TNO3 * 1.e6                                    ! total input nitrate  (g+p)  [umol/m^3]
+609	      TCl   = TCl  * 1.e6                                    ! total input chloride (g+p)  [umol/m^3]
+610	      TPo   = TPo  * 1.e6                                    ! total input potasium (g+p)  [umol/m^3]
+611	      TCa   = TCa  * 1.e6                                    ! total input calcium  (g+p)  [umol/m^3]
+612	      TMg   = TMg  * 1.e6                                    ! total input magnesium(g+p)  [umol/m^3]
+613	!
+614	! residual gas:
+615	      GNH3 = GNH3 * 1.e6                                     ! residual NH3
+616	      GSO4 = GSO4 * 1.e6                                     ! residual H2SO4
+617	      GNO3 = GNO3 * 1.e6                                     ! residual HNO3
+618	      GHCl = GHCl * 1.e6                                     ! residual HCl
+619
+620	! total particulate matter (neutralized)
+621	      PNH4=TNH4-GNH3                                         ! particulate ammonium   [umol/m^3]
+622	      PNO3=TNO3-GNO3                                         ! particulate nitrate    [umol/m^3]
+623	      PCl =TCl -GHCl                                         ! particulate chloride   [umol/m^3]
+624	      PNa =TNa                                               ! particulate sodium     [umol/m^3]
+625	      PSO4=TSO4                                              ! particulate sulfate    [umol/m^3]
+626
+627	! liquid matter
+628	      ASO4 = ASO4 * 1.e6                                     ! aqueous phase sulfate  [umol/m^3]
+629	      ANH4 = ANH4 * 1.e6                                     ! aqueous phase ammonium [umol/m^3]
+630	      ANO3 = ANO3 * 1.e6                                     ! aqueous phase nitrate  [umol/m^3]
+631	      ACl  = ACl  * 1.e6                                     ! aqueous phase chloride [umol/m^3]
+632	      ANa  = ANa  * 1.e6                                     ! aqueous phase sodium   [umol/m^3]
+633
+634	! solid matter
+635	      SNH4=PNH4-ANH4                                         ! solid phase ammonium   [umol/m^3]
+636	      SSO4=PSO4-ASO4                                         ! solid phase sulfate    [umol/m^3]
+637	      SNO3=PNO3-ANO3                                         ! solid phase nitrate    [umol/m^3]
+638	      SCl =PCl -ACl                                          ! solid phase chloride   [umol/m^3]
+639	      SNa =PNa -ANa                                          ! solid phase sodium     [umol/m^3]
+640
+641	! GO SAVE ...
+642
+643	      IF(SNH4.LT.0.)   SNH4=0.
+644	      IF(SSO4.LT.0.)   SSO4=0.
+645	      IF(SNO3.LT.0.)   SNO3=0.
+646	      IF(SCl.LT.0.)    SCl=0.
+647	      IF(SNa.LT.0.)    SNa=0.
+648
+649	      PM=SNH4+SSO4+SNO3+SNH4+SCl+SNa+ANH4+ASO4+ANO3+ACl+ANa  ! total PM [umol/m^3]
+650	      PMs=SNH4*MWNH4+SSO4*MWSO4+SNO3*MWNO3+SCl*MWCl+SNa*MWNa ! dry particulate matter (PM)     [ug/m^3]
+651	      PMt=PMs+ANH4*MWNH4+ASO4*MWSO4+ANO3*MWNO3+ACl*MWCl+  &
+652	          ANa*MWNa                                           ! total (dry + wet) PM, excl. H20 [ug/m^3]
+653
+654	      WH2O = WH2O * 1.e9                                     ! convert aerosol water from [kg/m^3] to [ug/m^3]
+655	      IF(WH2O.LT.1.e-3) WH2O=0.
+656
+657	! UPDATE HISTORY RH FOR HYSTERESIS (ONLINE CALCULATIONS ONLY)
+658
+659	      RH_HIST=2.                                             ! wet
+660	      IF(WH2O.EQ.0.) RH_HIST=1.                              ! dry
+661
+662	      RINC = 1.
+663	      IF(PMt.GT.0.)   RINC = (WH2O/PMt+1)**(1./3.)           ! approx. radius increase due to water uptake
+664	      IF(RINC.EQ.0.)  RINC = 1.
+665
+666	      RATIONS = 0.
+667	      IF(PSO4.GT.0.) RATIONS = PNO3/PSO4                     ! nitrate / sulfate mol ratio
+668
+669	      GR = 0.
+670	      IF(GNO3.GT.0.) GR = GNH3/GNO3                          ! gas ratio = residual NH3 / residual HNO3   [-]
+671
+672	      DON = 0.
+673	      IF((PNO3+2.*PSO4).GT.0.) DON = 100.*PNH4/(PNO3+2.*PSO4)! degree of neutralization by ammonia : ammonium / total nitrate + sulfate  [%]
+674
+675	      NO3P = 0.
+676	      IF(TNO3.GT.0.) NO3P = 100.*PNO3/TNO3                   ! nitrate  partitioning = nitrate  / total nitrate    [%]
+677
+678	      NH4P = 0.
+679	      IF(TNH4.GT.0.) NH4P = 100.*PNH4/TNH4                   ! ammonium partitioning = ammonium / total ammonium   [%]
+680	!
+681	! store aerosol species for diagnostic output:
+682	!______________________________________________________________
+683	! Input values:
+684	      yo(il, 1) = TT   - 273.15                                       ! T                                    [degC]
+685	      yo(il, 2) = RH   * 100.00                                       ! RH                                      [%]
+686	      yo(il, 3) = TNH4                                                ! total input ammonium (g+p)       [umol/m^3]
+687	      yo(il, 4) = TSO4                                                ! total input sulfate  (g+p)       [umol/m^3]
+688	      yo(il, 5) = TNO3                                                ! total input nitrate  (g+p)       [umol/m^3]
+689	      yo(il, 6) = TNa                                                 ! total input sodium   (p)         [umol/m^3]
+690	      yo(il,33) = TCl                                                 ! total input chloride (g+p)       [umol/m^3]
+691	      yo(il, 7) = TPo                                                 ! total input potasium (p)         [umol/m^3]
+692	      yo(il,34) = TCa                                                 ! total input calcium  (p)         [umol/m^3]
+693	      yo(il,35) = TMg                                                 ! total input magnesium(p)         [umol/m^3]
+694	      yo(il,25) = PX                                                  ! atmospheric pressure                  [hPa]
+695	! Output values:
+696	      yo(il, 8) = GHCL                                                ! residual HCl   (g)               [umol/m^3]
+697	      yo(il, 9) = GNO3                                                ! residual HNO3  (g)               [umol/m^3]
+698	      yo(il,10) = GNH3                                                ! residual NH3   (g)               [umol/m^3]
+699	      yo(il,11) = GSO4                                                ! residual H2SO4 (aq)              [umol/m^3]
+700	      yo(il,12) = WH2O                                                ! aerosol Water  (aq)                [ug/m^3]
+701	      yo(il,13) = PH                                                  ! aerosol pH                            [log]
+702	      yo(il,14) = ZFLAG                                               ! concnetration domain [1=SP,2=SN,3=SR,4=SVR]
+703	      yo(il,15) = PM                                                  ! total particulate matter         [umol/m^3]
+704	      yo(il,16) = SNH4                                                ! solid ammonium (s)               [umol/m^3]
+705	      yo(il,17) = SNO3                                                ! solid nitrate  (s)               [umol/m^3]
+706	      yo(il,18) = SSO4                                                ! solid sulfate  (s)               [umol/m^3]
+707	      yo(il,19) = PNH4                                                ! particulate ammonium (p=a+s)     [umol/m^3]
+708	      yo(il,20) = PNO3                                                ! particulate nitrate  (p=a+s)     [umol/m^3]
+709	      yo(il,21) = PSO4                                                ! particulate sulfate  (p=a+s)     [umol/m^3]
+710	      yo(il,22) = RATIONS                                             ! mol ratio Nitrate/Sulfate (p)           [-]
+711	      yo(il,23) = GAMA                                                ! activity coefficient (e.g. NH4NO3)           [-]
+712	      yo(il,24) = ZIONIC                                              ! ionic strength (aq)                [mol/kg]
+713	      yo(il,26) = PMt                                                 ! total PM (liquids & solids)        [ug/m^3]
+714	      yo(il,27) = PMs                                                 ! total PM (solid)                   [ug/m^3]
+715	      yo(il,28) = RINC                                                ! radius increase (H2O/PMt+1)**(1/3)      [-]
+716	      yo(il,29) = SCl                                                 ! solid chloride (s)               [umol/m^3]
+717	      yo(il,30) = SNa                                                 ! solid sodium (s)                 [umol/m^3]
+718	      yo(il,31) = PCl                                                 ! particulate chloride (p=a+s)     [umol/m^3]
+719	      yo(il,32) = PNa                                                 ! particulate sodium (p=a+s)       [umol/m^3]
+720	      yo(il,36) = RHD                                                 ! RH of deliquescence
+721	      yo(il,37) = HPLUS                                               ! H+ molality (mol/kg)
+722	enddo
+723	!
+724	end subroutine eqsam_v03d
+
