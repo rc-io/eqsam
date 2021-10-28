@@ -1,6 +1,6 @@
 # EQSAM
 
-The EQuilibrium Simplified Aerosol Model is a framework to parameterise the water uptake of atmospheric aerosols, which usually include mixtures of semi-volatile and non-volatile aerosol compounds. 
+The **EQ**uilibrium **S**implified **A**erosol **M**odel is a framework to parameterise the water uptake of atmospheric aerosols, which usually include mixtures of semi-volatile and non-volatile aerosol compounds. 
 
 Version 4 for climate simulations (EQSAM4clim) extends the orginal EQSAM version of [Metzger et al. (2000](https://dspace.library.uu.nl/handle/1874/646), [Metzger et al. (2002)](https://doi.org/10.1029/2001JD001102) to nanometer-sized aerosols [(Metzger et al., 2016a)](https://doi.org/10.5194/acp-16-7213-2016). EQSAM4clim is based on a compound specific single-solute coefficient, which was introduced in [Metzger et al. (2012)](https://doi.org/10.5194/acp-12-5429-2012) to accurately parameterise the single solution hygroscopic growth, considering the Kelvin effect. The unique, since fully analytical approach accounts for the water uptake of concentrated nanometer-sized particles up to dilute solutions, i.e. from the compounds relative humidity of deliquescence up to supersaturation (Köhler theory).  
 
