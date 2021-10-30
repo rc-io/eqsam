@@ -1,5 +1,5 @@
 !____________________________________________________________________________________________
-SUBROUTINE EQSAM4clim(xPP,xTT,xRH,xAD,xsPM,xaPM,xPMs,xPMt,xRHO,xVOL,xPH,xHp,xGF, &
+SUBROUTINE EQSAM4clim(xTT,xRH,xAD,xsPM,xaPM,xPMs,xPMt,xRHO,xVOL,xPH,xHp,xGF, &
                       xWH2O,xYPa,xYPs,xYMa,xYMs,xYG,neq,Dd,leqm,lo)
 !____________________________________________________________________________________________
  IMPLICIT NONE
@@ -63,7 +63,6 @@ SUBROUTINE EQSAM4clim(xPP,xTT,xRH,xAD,xsPM,xaPM,xPMs,xPMt,xRHO,xVOL,xPH,xHp,xGF,
 ! xYG   = gases   (gaseous phase)[mol/m3(air)]
 !    (1)=HNO3, (2)=HCl,  (3)=NH3, (4)=H2SO4 
 ! - input:
-! xPP    = pressure              [Pa]
 ! xTT    = temperature           [K]
 ! xRH    = relative humidity     [0-1]
 ! Dd     = aerosol dry diameter  [m]
@@ -121,6 +120,7 @@ SUBROUTINE EQSAM4clim(xPP,xTT,xRH,xAD,xsPM,xaPM,xPMs,xPMt,xRHO,xVOL,xPH,xHp,xGF,
 REAL(dp),PARAMETER                            :: REALZERO=tiny(0._dp),ZERO=0._dp,ONE=1._dp
 REAL(dp),PARAMETER                            :: TINYX=1.e-15_dp,eqT0=298.15_dp ![K]
 REAL(dp),PARAMETER                            :: R=8.314409_dp            ![J/mol/K]
+REAL(dp),PARAMETER                            :: eqR=R/101325._dp   ![atm*m^3/mol/K]
 REAL(dp),PARAMETER                            :: sigma=0.0761_dp          ![J/m^2]
 REAL(dp),PARAMETER                            :: RHMAX=0.98_dp            ![-]
 !______________________________________________
@@ -193,9 +193,9 @@ INTEGER, DIMENSION(neq) :: NZeq,IWATeq,IDeq
 !______________________________________________
 INTEGER, DIMENSION(neq,0:jSOL) :: ieqsalt
 !______________________________________________
-REAL(dp),DIMENSION(neq) :: eqP,eqTT,eqRH,eqsPM,eqPMs,eqaPM,eqPMt,eqWH2O,eqPH,eqGF,YY,YZ
+REAL(dp),DIMENSION(neq) :: eqTT,eqRH,eqsPM,eqPMs,eqaPM,eqPMt,eqWH2O,eqPH,eqGF,YY,YZ
 REAL(dp),DIMENSION(neq) :: eqVOL,eqRHO,eqXPi,eqXMi,eqHPLUS,XRHDMIN,XRHDMAX,XRHDIFF,TSO4
-REAL(dp),DIMENSION(neq) :: eqMolm,eqMs,eqNs,eqWs,eqNZm,eqRHDM,eqR
+REAL(dp),DIMENSION(neq) :: eqMolm,eqMs,eqNs,eqWs,eqNZm,eqRHDM
 !_______________________________________________
 REAL(dp),DIMENSION(neq,mcati,2)   :: eqyp
 REAL(dp),DIMENSION(neq,manio,2)   :: eqym
@@ -208,7 +208,7 @@ REAL(dp),DIMENSION(neq,0:manio)   :: eqxm
 !______________________________________________
 REAL(dp),DIMENSION(neq,5)         :: xYPa,xYPs
 REAL(dp),DIMENSION(neq,4)         :: xYMa,xYMs,xYG
-REAL(dp),DIMENSION(neq)           :: xPP,xTT,xRH,xAD,xsPM,xPMs,xaPM,xPMt,xWH2O,xPH,xVOL,xRHO,xGF,xHp
+REAL(dp),DIMENSION(neq)           :: xTT,xRH,xAD,xsPM,xPMs,xaPM,xPMt,xWH2O,xPH,xVOL,xRHO,xGF,xHp
 !____________________________________________________________________________________________
 ! cation name     |            mciam      mciso      mcipo      mcica       mcimg
 DATA eqxpz(0:mcati) / 1._dp,  1.0_dp,    1.0_dp,    1.0_dp,     2.0_dp,     2.0_dp     /
@@ -397,9 +397,6 @@ DATA eqxy(jRHDc,0:jSOL)/  ZERO, &
 !______________________________________
 ! INPUT
    DO i=neq1,neq2
-   ! Pressure [Pa]
-      eqP   (i)=xPP  (i)
-      eqR   (i)=R/eqP(i) !  [m^3/mol/K]
    ! Temperature            [K]
       eqTT  (i)=xTT  (i)
    ! Relative humidity      [0-1]
@@ -678,7 +675,7 @@ DATA eqxy(jRHDc,0:jSOL)/  ZERO, &
                ! NH4CL(S) <==> NH3(G) + HCL(G)   [ppb^2]
                X3   = 1.086E-16_dp ! [ppb^2]
                X3   = X3*EXP(-71.00_dp*(T0T-ONE)+2.400_dp*COEF)
-               KEQ  = X3/(eqR(i)*eqTT(i))/(eqR(i)*eqTT(i)) ! [(mol^2/m^3(air))^2]
+               KEQ  = X3/(eqR*eqTT(i))/(eqR*eqTT(i)) ! [(mol^2/m^3(air))^2]
             END IF
             IF(Is == eqano) THEN
                ! NH4NO3(S) <==> NH3(G) + HNO3(G)
@@ -691,7 +688,7 @@ DATA eqxy(jRHDc,0:jSOL)/  ZERO, &
                ! SEQUILIB
                !X3   = 2.985e-17_dp ! [ppb^2]
                !X3   = X3*EXP(-75.11_dp*(T0T-ONE)+13.460_dp*COEF)
-               KEQ   = X3/(eqR(i)*eqTT(i))/(eqR(i)*eqTT(i)) ! [(mol^2/m^3(air))^2]
+               KEQ   = X3/(eqR*eqTT(i))/(eqR*eqTT(i)) ! [(mol^2/m^3(air))^2]
             END IF
             COEF=X2
             IF(lmixs.AND.TSO4(i)>eqXPi(i)) THEN
